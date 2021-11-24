@@ -26,26 +26,17 @@ static mut MAPPINGS: Vec<MappedPages> = Vec::new();
 
 
 pub struct QueryIter {
-  _region_address: usize,
+  region_address: usize,
   upper_bound: usize,
 }
 
 impl QueryIter {
   pub fn new(origin: *const (), size: usize) -> Result<QueryIter> {
-    drop(origin);
-    drop(size);
-    /*
-    let system = system_info();
-
+    let start = origin as usize;
     Ok(QueryIter {
-      region_address: max(origin as usize, system.lpMinimumApplicationAddress as usize),
-      upper_bound: min(
-        (origin as usize).saturating_add(size),
-        system.lpMaximumApplicationAddress as usize,
-      ),
+      region_address: start,
+      upper_bound: start.saturating_add(size), 
     })
-    */
-    unimplemented!()
   }
 
   pub fn upper_bound(&self) -> usize {
@@ -57,55 +48,35 @@ impl Iterator for QueryIter {
   type Item = Result<Region>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    unimplemented!()
-    /*
-    let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
-
     while self.region_address < self.upper_bound {
-      let bytes = unsafe {
-        VirtualQuery(
-          self.region_address as winapi::um::winnt::PVOID,
-          &mut info,
-          size_of::<MEMORY_BASIC_INFORMATION>() as winapi::shared::basetsd::SIZE_T,
-        )
-      };
-
-      if bytes == 0 {
-        return Some(Err(Error::SystemCall(io::Error::last_os_error())));
-      }
-
-      self.region_address = (info.BaseAddress as usize).saturating_add(info.RegionSize);
-
-      // Only mapped memory regions are of interest
-      if info.State == MEM_RESERVE || info.State == MEM_COMMIT {
-        let mut region = Region {
-          base: info.BaseAddress as *const _,
-          reserved: info.State != MEM_COMMIT,
-          guarded: (info.Protect & winapi::um::winnt::PAGE_GUARD) != 0,
-          shared: (info.Type & winapi::um::winnt::MEM_PRIVATE) == 0,
-          size: info.RegionSize as usize,
-          ..Default::default()
+      // We search the list of mappings on every iteration in case the mappings have changed.
+      if let Some(mp) = find_mapped_pages(self.region_address as *const _).map(|i| unsafe { &MAPPINGS[i] }) {
+        // move the next iteration to the end of this MappedPages region.
+        self.region_address += mp.size_in_bytes();
+        
+        let region = Region {
+          base:       mp.start_address().value() as *const _,
+          reserved:   false, // not relevant in Theseus, only in Windows, see `Region::is_committed()`
+          guarded:    false, // not relevant in Theseus, only in Windows and MacOS
+          shared:     true,  // see module-level docs
+          size:       mp.size_in_bytes(),
+          protection: Protection::from_native(mp.flags()),
         };
-
-        if region.is_committed() {
-          region.protection = Protection::from_native(info.Protect);
-        }
-
         return Some(Ok(region));
       }
     }
 
     None
-    */
   }
 }
 
-/// Returns the index of the matching MappedPages object in [`MAPPINGS`].
-fn find_mapped_pages(base: *const (), size: usize) -> Option<usize> {
+/// Returns the index of the MappedPages object in [`MAPPINGS`]
+/// that contains the given `base` address, if any.
+fn find_mapped_pages(base: *const ()) -> Option<usize> {
   let base = base as usize;
   unsafe {
     for (i, mp) in MAPPINGS.iter().enumerate() {
-      if base >= mp.start_address().value() && base + size <= (mp.start_address().value() + mp.size_in_bytes()) {
+      if base >= mp.start_address().value() && base < (mp.start_address().value() + mp.size_in_bytes()) {
         return Some(i);
       }
     }
@@ -141,8 +112,8 @@ pub unsafe fn alloc(base: *const (), size: usize, protection: Protection) -> Res
 }
 
 /// This function uses `munmap` to remove a region previously created by `mmap`.
-pub unsafe fn free(base: *const (), size: usize) -> Result<()> {
-  if let Some(mp) = find_mapped_pages(base, size).map(|i| unsafe { MAPPINGS.remove(i) }) {
+pub unsafe fn free(base: *const (), _size: usize) -> Result<()> {
+  if let Some(mp) = find_mapped_pages(base).map(|i| unsafe { MAPPINGS.remove(i) }) {
     drop(mp); // unmaps this MappedPages
     Ok(())
   } else {
@@ -150,8 +121,8 @@ pub unsafe fn free(base: *const (), size: usize) -> Result<()> {
   }
 }
 
-pub unsafe fn protect(base: *const (), size: usize, protection: Protection) -> Result<()> {
-  if let Some(mp) = find_mapped_pages(base, size).map(|i| unsafe { &mut MAPPINGS[i] }) {
+pub unsafe fn protect(base: *const (), _size: usize, protection: Protection) -> Result<()> {
+  if let Some(mp) = find_mapped_pages(base).map(|i| unsafe { &mut MAPPINGS[i] }) {
     let kernel_mmi_ref = theseus_memory::get_kernel_mmi_ref().expect("Theseus memory subsystem not yet initialized.");
     let mut kernel_mmi = kernel_mmi_ref.lock();
     mp.remap(&mut kernel_mmi.page_table, protection.to_native())
@@ -172,7 +143,7 @@ pub fn unlock(_base: *const (), _size: usize) -> Result<()> {
 }
 
 impl Protection {
-  fn _from_native(flags: EntryFlags) -> Self {
+  fn from_native(flags: EntryFlags) -> Self {
     let mut prot = Protection::empty();
     if flags.intersects(EntryFlags::PRESENT) {
       // Theseus currently treats the PRESENT flag as readable.
