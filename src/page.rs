@@ -1,7 +1,6 @@
 //! Page related functions.
 
 use crate::os;
-use std::sync::Once;
 
 /// Returns the operating system's page size.
 ///
@@ -16,12 +15,18 @@ use std::sync::Once;
 /// ```
 #[inline]
 pub fn size() -> usize {
-  static INIT: Once = Once::new();
-  static mut PAGE_SIZE: usize = 0;
+  #[cfg(target_os = "theseus")] {
+    os::page_size()
+  }
+  #[cfg(not(target_os = "theseus"))] {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    static mut PAGE_SIZE: usize = 0;
 
-  unsafe {
-    INIT.call_once(|| PAGE_SIZE = os::page_size());
-    PAGE_SIZE
+    unsafe {
+      INIT.call_once(|| PAGE_SIZE = os::page_size());
+      PAGE_SIZE
+    }
   }
 }
 

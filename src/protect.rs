@@ -1,5 +1,8 @@
 use crate::{os, util, Protection, QueryIter, Region, Result};
 
+#[cfg(target_os = "theseus")]
+use rust_alloc::vec::Vec;
+
 /// Changes the memory protection of one or more pages.
 ///
 /// The address range may overlap one or more pages, and if so, all pages

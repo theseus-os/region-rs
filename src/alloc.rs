@@ -1,4 +1,5 @@
 use crate::{os, page, util, Error, Protection, Result};
+use super::{ops, ptr};
 
 /// A handle to an owned region of memory.
 ///
@@ -32,21 +33,21 @@ impl Allocation {
   /// is represented by two equal pointers, and the difference between the two
   /// pointers represents the size of the allocation.
   #[inline(always)]
-  pub fn as_ptr_range<T>(&self) -> std::ops::Range<*const T> {
+  pub fn as_ptr_range<T>(&self) -> ops::Range<*const T> {
     let range = self.as_range();
     (range.start as *const T)..(range.end as *const T)
   }
 
   /// Returns two mutable raw pointers spanning the allocation's address space.
   #[inline(always)]
-  pub fn as_mut_ptr_range<T>(&mut self) -> std::ops::Range<*mut T> {
+  pub fn as_mut_ptr_range<T>(&mut self) -> ops::Range<*mut T> {
     let range = self.as_range();
     (range.start as *mut T)..(range.end as *mut T)
   }
 
   /// Returns a range spanning the allocation's address space.
   #[inline(always)]
-  pub fn as_range(&self) -> std::ops::Range<usize> {
+  pub fn as_range(&self) -> ops::Range<usize> {
     (self.base as usize)..(self.base as usize).saturating_add(self.size)
   }
 
@@ -115,7 +116,7 @@ pub fn alloc(size: usize, protection: Protection) -> Result<Allocation> {
   let size = page::ceil(size as *const ()) as usize;
 
   unsafe {
-    let base = os::alloc(std::ptr::null::<()>(), size, protection)?;
+    let base = os::alloc(ptr::null::<()>(), size, protection)?;
     Ok(Allocation { base, size })
   }
 }

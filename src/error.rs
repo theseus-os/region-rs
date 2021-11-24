@@ -1,10 +1,19 @@
 //! Error types and utilities.
 
+use super::{fmt, result};
+
+#[cfg(not(target_os = "theseus"))]
 use std::error::Error as StdError;
-use std::{fmt, io};
+#[cfg(not(target_os = "theseus"))]
+use std::io;
+
+#[cfg(target_os = "theseus")]
+use core2::io;
+#[cfg(target_os = "theseus")]
+use rust_alloc::string::String;
 
 /// The result type used by this library.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 /// A collection of possible errors.
 #[derive(Debug)]
@@ -38,4 +47,5 @@ impl fmt::Display for Error {
   }
 }
 
+#[cfg(not(target_os = "theseus"))]
 impl StdError for Error {}

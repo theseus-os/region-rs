@@ -39,3 +39,9 @@ mod openbsd;
 
 #[cfg(target_os = "openbsd")]
 pub use self::openbsd::*;
+
+#[cfg(target_os = "theseus")]
+mod theseus;
+
+#[cfg(target_os = "theseus")]
+pub use self::theseus::*;
