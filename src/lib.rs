@@ -77,7 +77,7 @@
 //!   # }
 //!   ```
 
-#![cfg_attr(target_os = "theseus", no_std, feature(once_cell))]
+#![cfg_attr(target_os = "theseus", no_std)]
 
 #[cfg(target_os = "theseus")]
 extern crate alloc as rust_alloc;
