@@ -113,7 +113,7 @@ pub unsafe fn alloc(base: *const (), size: usize, protection: Protection) -> Res
 
 /// This function uses `munmap` to remove a region previously created by `mmap`.
 pub unsafe fn free(base: *const (), _size: usize) -> Result<()> {
-  if let Some(mp) = find_mapped_pages(base).map(|i| unsafe { MAPPINGS.remove(i) }) {
+  if let Some(mp) = find_mapped_pages(base).map(|i| MAPPINGS.remove(i)) {
     drop(mp); // unmaps this MappedPages
     Ok(())
   } else {
@@ -122,7 +122,7 @@ pub unsafe fn free(base: *const (), _size: usize) -> Result<()> {
 }
 
 pub unsafe fn protect(base: *const (), _size: usize, protection: Protection) -> Result<()> {
-  if let Some(mp) = find_mapped_pages(base).map(|i| unsafe { &mut MAPPINGS[i] }) {
+  if let Some(mp) = find_mapped_pages(base).map(|i| &mut MAPPINGS[i]) {
     let kernel_mmi_ref = theseus_memory::get_kernel_mmi_ref().expect("Theseus memory subsystem not yet initialized.");
     let mut kernel_mmi = kernel_mmi_ref.lock();
     mp.remap(&mut kernel_mmi.page_table, protection.to_native())
