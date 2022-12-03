@@ -14,7 +14,7 @@ use crate::{Error, Protection, Region, Result};
 use rust_alloc::vec::Vec;
 // use core::cmp::{max, min};
 use core2::io;
-use theseus_memory::{MappedPages, EntryFlags};
+use theseus_memory::{MappedPages, PteFlags};
 
 /// The set of active mappings created by users of this crate.
 /// This is not unified with all other mappings in Theseus,
@@ -60,7 +60,7 @@ impl Iterator for QueryIter {
           guarded:    false, // not relevant in Theseus, only in Windows and MacOS
           shared:     true,  // see module-level docs
           size:       mp.size_in_bytes(),
-          protection: Protection::from_native(mp.flags()),
+          protection: Protection::from_native(mp.flags().into()),
         };
         return Some(Ok(region));
       }
@@ -143,10 +143,10 @@ pub fn unlock(_base: *const (), _size: usize) -> Result<()> {
 }
 
 impl Protection {
-  fn from_native(flags: EntryFlags) -> Self {
+  fn from_native(flags: PteFlags) -> Self {
     let mut prot = Protection::empty();
-    if flags.intersects(EntryFlags::PRESENT) {
-      // Theseus currently treats the PRESENT flag as readable.
+    if flags.is_valid() {
+      // Theseus currently treats the PRESENT/VALID flag as readable.
       prot.insert(Protection::READ);
     }
     if flags.is_writable() {
@@ -158,22 +158,12 @@ impl Protection {
     prot
   }
 
-  pub(crate) fn to_native(self) -> EntryFlags {
-    let mut flags = EntryFlags::empty();
-
-    if self.intersects(Protection::READ) {
-      // Theseus currently treats the PRESENT flag as readable.
-      flags.insert(EntryFlags::PRESENT);
-    }
-    if self.intersects(Protection::WRITE) {
-      flags.insert(EntryFlags::WRITABLE)
-    }
-    // Don't set the NO_EXECUTE flag if the region is executable.
-    if !self.intersects(Protection::EXECUTE) {
-      flags.insert(EntryFlags::NO_EXECUTE);
-    }
-
-    flags
+  pub(crate) fn to_native(self) -> PteFlags {
+    PteFlags::new()
+      // Theseus currently treats the PRESENT/VALID flag as readable.
+      .valid(self.intersects(Protection::READ))
+      .writable(self.intersects(Protection::WRITE))
+      .executable(self.intersects(Protection::EXECUTE))
   }
 }
 
@@ -184,10 +174,10 @@ mod tests {
 
   #[test]
   fn protection_flags_are_mapped_to_native() {
-    let none = EntryFlags::NO_EXECUTE;
-    let ro   = EntryFlags::PRESENT | EntryFlags::NO_EXECUTE;
-    let rw   = EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE;
-    let rwx  = EntryFlags::PRESENT | EntryFlags::WRITABLE;
+    let none = PteFlags::NO_EXECUTE;
+    let ro   = PteFlags::PRESENT | PteFlags::NO_EXECUTE;
+    let rw   = PteFlags::PRESENT | PteFlags::WRITABLE | PteFlags::NO_EXECUTE;
+    let rwx  = PteFlags::PRESENT | PteFlags::WRITABLE;
     assert_eq!(Protection::NONE.to_native(), none);
     assert_eq!(Protection::READ.to_native(), ro);
     assert_eq!(Protection::READ_WRITE.to_native(), rw);
